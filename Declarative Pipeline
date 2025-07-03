@@ -1,0 +1,70 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKERHUB_USER = credentials('dockerhub-username')
+    DOCKERHUB_PASS = credentials('dockerhub-password')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/your/repo.git'
+      }
+    }
+
+    stage('Build Frontend') {
+      steps {
+        dir('frontend') {
+          sh 'docker build -t yourdocker/frontend .'
+        }
+      }
+    }
+
+    stage('Build Backend') {
+      steps {
+        dir('backend') {
+          sh 'docker build -t yourdocker/backend .'
+        }
+      }
+    }
+
+    stage('Push to DockerHub') {
+      steps {
+        sh '''
+          echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+          docker push yourdocker/frontend
+          docker push yourdocker/backend
+        '''
+      }
+    }
+
+    stage('Terraform Apply Infra') {
+      steps {
+        dir('infra') {
+          sh '''
+            terraform init
+            terraform apply -auto-approve
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        sh '''
+          kubectl apply -f k8s/
+        '''
+      }
+    }
+
+    stage('Trigger Monitoring') {
+      steps {
+        sh '''
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm install monitoring prometheus-community/kube-prometheus-stack
+        '''
+      }
+    }
+  }
+}
